@@ -1,0 +1,115 @@
+# HR Screening Competency — stub (v0.1)
+id: hr-screening
+name: HR Screening Competency
+version: "0.1.0"
+description: Screen candidates against role requirements with bias mitigation.
+domain: hr
+mission: Surface qualified candidates while reducing bias and time-to-shortlist.
+risk_level: high
+priority_level: high
+
+objectives:
+  - id: quality
+    name: Improve shortlist quality
+    priority: high
+  - id: bias
+    name: Reduce demographic bias
+    priority: critical
+
+stakeholders: [hr_lead, hiring_manager, recruiter]
+scope: ["Resume screening; not interview decisions"]
+boundaries:
+  - "MUST NOT use protected attributes (age, gender, nationality, religion) in scoring"
+  - "Final hiring decisions are always human"
+
+required_inputs:
+  type: object
+  required: [job_description, resumes]
+  properties:
+    job_description: {type: string}
+    resumes: {type: array}
+
+expected_outputs:
+  type: object
+  properties:
+    shortlist: {type: array}
+    notes: {type: string}
+
+skills:
+  - id: skills_extraction
+    name: Skills Extraction
+    execution_steps:
+      - id: extract
+        type: prompt
+        prompt: |
+          Extract required skills from the JD. Job description:
+          {{ inputs.job_description }}
+        output_key: required_skills
+
+  - id: candidate_scoring
+    name: Candidate Scoring
+    dependencies: [skills_extraction]
+    execution_steps:
+      - id: score
+        type: prompt
+        prompt: |
+          For each resume, score skill-match 0–10 against:
+          {{ data.required_skills }}
+
+          IMPORTANT: Ignore name, gender, age, nationality, photos. Score
+          ONLY on demonstrated skills, experience, and outcomes.
+
+          Resumes:
+          {{ inputs.resumes }}
+        output_key: scores
+
+  - id: shortlist
+    name: Shortlist
+    dependencies: [candidate_scoring]
+    execution_steps:
+      - id: write
+        type: prompt
+        prompt: |
+          Recommend a top-5 shortlist from:
+          {{ data.scores }}
+          Justify in ≤25 words per candidate.
+        output_key: shortlist
+
+workflows:
+  - id: screen
+    name: Screen
+    is_default: true
+    steps:
+      - id: a
+        type: skill
+        skill: skills_extraction
+      - id: b
+        type: skill
+        skill: candidate_scoring
+      - id: c
+        type: skill
+        skill: shortlist
+      - id: approve_shortlist
+        type: approval
+        approval_role: hr_lead
+        approval_message: "HR lead reviews shortlist before sharing with hiring manager"
+
+policies:
+  - id: deny_protected_attrs
+    name: Block any use of protected attributes
+    effect: deny
+    applies_to: ["skill:rank_by_demographics"]
+    reason: "Anti-discrimination policy"
+  - id: allow_screening
+    name: Allow standard screening skills
+    effect: allow
+    applies_to:
+      - "skill:skills_extraction"
+      - "skill:candidate_scoring"
+      - "skill:shortlist"
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+tags: [hr, sample, stub]

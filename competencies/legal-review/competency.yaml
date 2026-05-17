@@ -1,0 +1,104 @@
+# Legal Review Competency — stub (v0.1)
+# A starter shape; flesh out skills/policies/workflow before production use.
+id: legal-review
+name: Legal Review Competency
+version: "0.1.0"
+description: Review contracts/agreements for risk and compliance issues.
+domain: legal
+mission: Identify legal risks in contracts and suggest mitigations.
+risk_level: high
+priority_level: high
+
+objectives:
+  - id: risk_id
+    name: Identify legal risks
+    priority: critical
+  - id: compliance
+    name: Ensure regulatory compliance
+    priority: high
+
+stakeholders: [general_counsel, legal_ops, requestor]
+scope: ["Review contracts of any length under 50 pages"]
+boundaries: ["Will not provide jurisdiction-specific legal advice"]
+success_metrics: ["risks_identified_per_contract >= 5", "false_positive_rate < 0.2"]
+
+required_inputs:
+  type: object
+  required: [document_text]
+  properties:
+    document_text: {type: string}
+    jurisdiction: {type: string}
+    parties: {type: array}
+
+expected_outputs:
+  type: object
+  properties:
+    risks: {type: array}
+    recommendations: {type: array}
+    summary: {type: string}
+
+skills:
+  - id: clause_extraction
+    name: Clause Extraction
+    description: Parse the contract and extract every clause.
+    execution_steps:
+      - id: extract
+        type: prompt
+        prompt: |
+          Extract every distinct clause from the document below. Output as
+          a numbered list. Document:
+          {{ inputs.document_text }}
+        output_key: clauses
+
+  - id: risk_flagging
+    name: Risk Flagging
+    description: Flag clauses with legal risk.
+    dependencies: [clause_extraction]
+    execution_steps:
+      - id: flag
+        type: prompt
+        prompt: |
+          For each clause below, identify any legal risk (likelihood + impact)
+          and suggest a mitigation. Be concise.
+
+          {{ data.clauses }}
+        output_key: risks
+
+  - id: summary
+    name: Summary
+    description: Executive summary of risks + recommendations.
+    dependencies: [risk_flagging]
+    execution_steps:
+      - id: write
+        type: prompt
+        prompt: |
+          Write a one-page executive summary based on:
+          {{ data.risks }}
+        output_key: summary
+
+workflows:
+  - id: review
+    name: Review
+    is_default: true
+    steps:
+      - id: a
+        type: skill
+        skill: clause_extraction
+      - id: b
+        type: skill
+        skill: risk_flagging
+      - id: c
+        type: skill
+        skill: summary
+
+policies:
+  - id: allow_all
+    name: Allow analysis
+    effect: allow
+    applies_to: ["*"]
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+tags: [legal, sample, stub]

@@ -1,0 +1,37 @@
+# Universal Competency Engine — API image
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_LINK_MODE=copy
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (system-wide)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.local/bin/uv /usr/local/bin/uv
+
+WORKDIR /app
+# Workspace + package manifests first for caching
+COPY pyproject.toml ./
+COPY packages/uce-core/pyproject.toml      packages/uce-core/pyproject.toml
+COPY packages/uce-core/README.md           packages/uce-core/README.md
+COPY packages/uce-llm/pyproject.toml       packages/uce-llm/pyproject.toml
+COPY packages/uce-llm/README.md            packages/uce-llm/README.md
+COPY packages/uce-runtime/pyproject.toml   packages/uce-runtime/pyproject.toml
+COPY packages/uce-runtime/README.md        packages/uce-runtime/README.md
+COPY packages/uce-api/pyproject.toml       packages/uce-api/pyproject.toml
+COPY packages/uce-api/README.md            packages/uce-api/README.md
+COPY packages/uce-cli/pyproject.toml       packages/uce-cli/pyproject.toml
+COPY packages/uce-cli/README.md            packages/uce-cli/README.md
+
+# Copy sources
+COPY packages/ packages/
+COPY competencies/ competencies/
+
+RUN uv sync --all-packages --frozen 2>/dev/null || uv sync --all-packages
+
+EXPOSE 8000
+CMD ["uv", "run", "uvicorn", "uce_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

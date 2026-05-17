@@ -1,0 +1,90 @@
+# Cybersecurity Competency — stub (v0.1)
+id: cybersecurity
+name: Cybersecurity Competency
+version: "0.1.0"
+description: Investigate alerts, triage incidents, and recommend containment.
+domain: security
+mission: Reduce time-to-triage for security alerts and improve incident response quality.
+risk_level: critical
+priority_level: critical
+
+objectives:
+  - id: triage_speed
+    name: Reduce triage time
+    priority: critical
+  - id: false_positives
+    name: Lower false-positive rate
+    priority: high
+
+stakeholders: [soc_lead, ciso, on_call_engineer]
+scope: ["Triage of SIEM alerts; container/cloud workloads"]
+boundaries: ["No autonomous remediation in production environments"]
+
+required_inputs:
+  type: object
+  required: [alert]
+  properties:
+    alert: {type: object}
+    asset: {type: object}
+
+expected_outputs:
+  type: object
+  properties:
+    severity: {type: string}
+    triage_summary: {type: string}
+    containment_plan: {type: string}
+
+skills:
+  - id: alert_classification
+    name: Alert Classification
+    execution_steps:
+      - id: classify
+        type: prompt
+        prompt: |
+          Classify the following alert as one of: benign, suspicious, malicious.
+          Explain in 3 bullets. Alert: {{ inputs.alert }}
+        output_key: classification
+
+  - id: containment_plan
+    name: Containment Plan
+    dependencies: [alert_classification]
+    execution_steps:
+      - id: plan
+        type: prompt
+        prompt: |
+          Draft a 5-step containment plan for the asset {{ inputs.asset }}
+          given classification: {{ data.classification }}
+        output_key: containment_plan
+
+workflows:
+  - id: triage
+    name: Triage
+    is_default: true
+    steps:
+      - id: c
+        type: skill
+        skill: alert_classification
+      - id: p
+        type: skill
+        skill: containment_plan
+      - id: approve_action
+        type: approval
+        approval_role: soc_lead
+        approval_message: "SOC lead must approve any containment action before it executes"
+
+policies:
+  - id: deny_autonomous_remediation
+    name: Block autonomous remediation in production
+    effect: deny
+    applies_to: ["skill:remediate_*"]
+    reason: "Production remediation always requires a human"
+  - id: triage_allowed
+    name: Allow triage steps
+    effect: allow
+    applies_to: ["skill:alert_classification", "skill:containment_plan"]
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+tags: [security, sample, stub]

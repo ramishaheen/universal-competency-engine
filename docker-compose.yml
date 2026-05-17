@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      UCE_DATABASE_URL: sqlite:////data/uce.db
+      UCE_JWT_SECRET: ${UCE_JWT_SECRET:-please-change-this-in-prod}
+      UCE_BOOTSTRAP_ADMIN_EMAIL: ${UCE_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      UCE_BOOTSTRAP_ADMIN_PASSWORD: ${UCE_BOOTSTRAP_ADMIN_PASSWORD:-changeme}
+      UCE_CORS_ORIGINS: http://localhost:3000
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - uce-data:/data
+    restart: unless-stopped
+
+  studio:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.studio
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  uce-data:

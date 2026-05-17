@@ -1,0 +1,344 @@
+# Procurement Competency — fully fleshed example for the Universal Competency Engine
+# Mirrors section 18 of the spec.
+id: procurement
+name: Procurement Competency
+version: "0.1.0"
+description: >
+  End-to-end procurement support: find vendors, score them, analyse pricing,
+  check compliance, assess risk, draft contracts, suggest negotiation
+  strategy, and generate an executive summary — under policy.
+domain: procurement
+mission: >
+  Help the organisation procure goods and services that are best-value,
+  compliant, low-risk, and aligned with strategic objectives.
+risk_level: high
+priority_level: high
+
+objectives:
+  - id: best_value
+    name: Maximise value-for-money
+    description: Lowest TCO consistent with quality and compliance
+    priority: high
+  - id: compliance
+    name: Maintain regulatory and policy compliance
+    priority: critical
+  - id: speed
+    name: Reduce procurement cycle time
+    priority: medium
+  - id: risk_minimisation
+    name: Minimise supplier and contractual risk
+    priority: high
+
+expected_outcomes:
+  - A shortlist of qualified vendors ranked by composite score
+  - A compliance + risk report for the top candidates
+  - A negotiation playbook
+  - An executive summary suitable for the CFO
+
+stakeholders: [CFO, head_of_procurement, legal_counsel, requestor]
+
+scope:
+  - Vendor discovery from supplied catalogue or open web (read-only)
+  - Quantitative scoring + ranking
+  - Compliance checking against configured policies
+  - Drafting (not signing) of contractual recommendations
+boundaries:
+  - The competency MUST NOT issue purchase orders autonomously
+  - The competency MUST NOT share sensitive vendor data outside the org
+  - Final award decisions ALWAYS require human approval
+
+success_metrics:
+  - shortlist_quality_score >= 0.8
+  - compliance_violations == 0
+  - average_cycle_time_days < 7
+
+required_inputs:
+  type: object
+  required: [request]
+  properties:
+    request: {type: string, description: "Free-text description of what to buy"}
+    budget_usd: {type: number, description: "Target budget"}
+    deadline: {type: string, description: "ISO date"}
+    preferences: {type: object}
+
+expected_outputs:
+  type: object
+  properties:
+    shortlist: {type: array}
+    compliance_report: {type: string}
+    risk_report: {type: string}
+    negotiation_playbook: {type: string}
+    executive_summary: {type: string}
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  temperature: 0.2
+  max_tokens: 2048
+
+# ── Skills ───────────────────────────────────────────────────────────────────
+skills:
+  - id: vendor_search
+    name: Vendor Search
+    description: Surface candidate vendors that match the request and budget.
+    execution_steps:
+      - id: brainstorm
+        type: prompt
+        prompt: |
+          You are a sourcing analyst. Identify 5–8 candidate vendors that could
+          fulfil the following procurement request. For each vendor, give
+          name, country, why-they-fit (≤25 words), and a rough price range.
+
+          REQUEST: {{ inputs.request }}
+          BUDGET_USD: {{ inputs.get('budget_usd', 'unspecified') }}
+          PREFERENCES: {{ inputs.get('preferences', {}) }}
+
+          Respond as a Markdown table only.
+        output_key: vendor_candidates
+
+  - id: vendor_scoring
+    name: Vendor Scoring
+    description: Score candidates on price, quality, delivery, and reputation.
+    dependencies: [vendor_search]
+    execution_steps:
+      - id: score
+        type: prompt
+        prompt: |
+          Score each vendor below on Price (0–10), Quality (0–10),
+          Delivery (0–10), Reputation (0–10) — and compute Composite as the
+          weighted average (0.35, 0.25, 0.20, 0.20).
+
+          CANDIDATES:
+          {{ data.vendor_candidates }}
+
+          Reply as a Markdown table with one row per vendor and a final
+          "RANKED SHORTLIST" list of the top 3.
+        output_key: scored_vendors
+
+  - id: price_analysis
+    name: Price Analysis
+    description: Inspect the pricing landscape and detect outliers.
+    dependencies: [vendor_scoring]
+    execution_steps:
+      - id: analyse
+        type: prompt
+        prompt: |
+          Using the scored vendors, identify pricing outliers (≥1.5× median),
+          fair-range estimates, and any negotiation levers visible in price
+          structure.
+
+          SCORED VENDORS:
+          {{ data.scored_vendors }}
+        output_key: price_analysis_report
+
+  - id: compliance_check
+    name: Compliance Check
+    description: Verify candidates against compliance requirements.
+    dependencies: [vendor_scoring]
+    execution_steps:
+      - id: check
+        type: prompt
+        prompt: |
+          Run a compliance check on the top 3 shortlisted vendors. For each
+          one: (1) regulatory status in their jurisdiction, (2) sanctions /
+          embargo risk, (3) data-protection posture (GDPR-equivalent), (4)
+          required disclosures. Flag any blockers explicitly.
+
+          SHORTLIST:
+          {{ data.scored_vendors }}
+        output_key: compliance_report
+
+  - id: risk_assessment
+    name: Risk Assessment
+    description: Identify supplier and contractual risk; suggest mitigations.
+    dependencies: [vendor_scoring, compliance_check]
+    execution_steps:
+      - id: assess
+        type: prompt
+        prompt: |
+          Produce a risk assessment for the top 3 vendors. Cover: financial,
+          operational, geopolitical, ESG, single-source dependency. For each
+          risk: likelihood (L/M/H), impact (L/M/H), mitigation.
+
+          SHORTLIST:
+          {{ data.scored_vendors }}
+          COMPLIANCE:
+          {{ data.compliance_report }}
+        output_key: risk_report
+
+  - id: contract_review
+    name: Contract Review (draft)
+    description: Draft recommended contract clauses + flag risky boilerplate.
+    dependencies: [risk_assessment]
+    execution_steps:
+      - id: draft
+        type: prompt
+        prompt: |
+          Draft 6–10 recommended contract clauses for the top vendor
+          (SLAs, liability caps, termination, IP, confidentiality, audit
+          rights, force majeure, dispute resolution, payment terms,
+          data-protection). Flag clauses that need legal review.
+
+          TOP VENDOR + CONTEXT:
+          {{ data.scored_vendors }}
+          RISKS:
+          {{ data.risk_report }}
+        output_key: contract_draft
+
+  - id: negotiation_strategy
+    name: Negotiation Strategy
+    description: Produce a 1-page negotiation playbook.
+    dependencies: [price_analysis, risk_assessment]
+    execution_steps:
+      - id: playbook
+        type: prompt
+        prompt: |
+          Produce a concise negotiation playbook for the top vendor:
+          (1) anchors, (2) BATNA, (3) trade-offs to offer, (4) red lines,
+          (5) recommended sequencing.
+
+          PRICE ANALYSIS:
+          {{ data.price_analysis_report }}
+          RISKS:
+          {{ data.risk_report }}
+        output_key: negotiation_playbook
+
+  - id: executive_report_generation
+    name: Executive Report
+    description: One-page summary for the CFO + recommended action.
+    dependencies:
+      - vendor_scoring
+      - compliance_check
+      - risk_assessment
+      - negotiation_strategy
+    execution_steps:
+      - id: summarise
+        type: prompt
+        prompt: |
+          Produce a one-page executive summary for the CFO covering:
+          recommendation, top-3 vendor table, key risks, compliance posture,
+          negotiation strategy, and what we need approval for.
+
+          INPUTS:
+          REQUEST: {{ inputs.request }}
+          BUDGET_USD: {{ inputs.get('budget_usd', 'unspecified') }}
+          DEADLINE: {{ inputs.get('deadline', 'unspecified') }}
+
+          MATERIAL:
+          - Vendors: {{ data.scored_vendors }}
+          - Compliance: {{ data.compliance_report }}
+          - Risk: {{ data.risk_report }}
+          - Negotiation: {{ data.negotiation_playbook }}
+        output_key: executive_summary
+
+# ── Workflow ─────────────────────────────────────────────────────────────────
+workflows:
+  - id: procurement_main
+    name: Procurement (end-to-end)
+    is_default: true
+    trigger: manual
+    steps:
+      - id: discover
+        type: skill
+        skill: vendor_search
+      - id: rank
+        type: skill
+        skill: vendor_scoring
+      - id: analyse_parallel
+        type: parallel
+        children:
+          - id: price
+            type: skill
+            skill: price_analysis
+          - id: compliance
+            type: skill
+            skill: compliance_check
+      - id: risk
+        type: skill
+        skill: risk_assessment
+      - id: review_branch
+        type: conditional
+        when: "inputs.get('budget_usd', 0) > 50000"
+        then:
+          - id: approve_high_value
+            type: approval
+            approval_role: head_of_procurement
+            approval_message: "High-value (>$50k) procurement — head_of_procurement approval required before contract drafting"
+        otherwise: []
+      - id: contract
+        type: skill
+        skill: contract_review
+      - id: negotiate
+        type: skill
+        skill: negotiation_strategy
+      - id: summary
+        type: skill
+        skill: executive_report_generation
+    completion_criteria: "outputs.get('executive_summary') is not None"
+
+# ── Policies ─────────────────────────────────────────────────────────────────
+policies:
+  - id: allow_read_only
+    name: Allow read-only skills
+    effect: allow
+    applies_to:
+      - "skill:vendor_search"
+      - "skill:vendor_scoring"
+      - "skill:price_analysis"
+      - "skill:compliance_check"
+      - "skill:risk_assessment"
+      - "skill:executive_report_generation"
+    reason: "Discovery + analysis tasks are safe"
+
+  - id: high_value_requires_approval
+    name: High-value contract requires approval
+    effect: require_approval
+    applies_to: ["workflow:procurement_main:step:approve_high_value", "skill:contract_review"]
+    when: "inputs.get('budget_usd', 0) > 50000"
+    required_role: head_of_procurement
+    compliance_tags: [SOX, PROC-103]
+    reason: "Contracts over $50k require head_of_procurement sign-off"
+
+  - id: deny_signing
+    name: Block any auto-signing actions
+    effect: deny
+    applies_to: ["*:sign_contract", "*:issue_purchase_order"]
+    reason: "Award/sign decisions are always human"
+
+# ── Agents (advisory — runtime executes via skills currently) ────────────────
+agents:
+  - id: planner
+    name: Planner
+    role: planner
+    system_prompt: "Decompose the procurement request into a minimum viable workflow."
+  - id: governance
+    name: Governance
+    role: governance
+    system_prompt: "Veto any action that violates the policy set."
+  - id: reviewer
+    name: Reviewer
+    role: reviewer
+    system_prompt: "Critique the executive summary for completeness and clarity."
+
+# ── Memory ───────────────────────────────────────────────────────────────────
+memory:
+  embedding_model: text-embedding-3-small
+  knowledge_sources:
+    - file://./knowledge/preferred_vendors.md
+    - file://./knowledge/compliance_rules.md
+
+# ── Evaluation ───────────────────────────────────────────────────────────────
+evaluation:
+  track_accuracy: true
+  track_latency: true
+  track_tokens: true
+  track_cost: true
+  track_policy_violations: true
+  track_escalations: true
+  success_threshold: 0.85
+  failure_threshold: 0.5
+
+tags: [procurement, finance, sourcing, sample]
+metadata:
+  spec_version: "1.0"
+  contact: dr.rami.b.h@gmail.com
