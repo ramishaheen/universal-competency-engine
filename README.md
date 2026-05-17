@@ -503,6 +503,9 @@ Inventor & developer of the Competency Intelligence framework.
 
 </div>
 
+if you dont know how to form the competency : 
+
+https://chatgpt.com/g/g-6a0a2f8d41648191926aea8891e93206-universal-competency-engine
 ---
 
 ## 📄 License
